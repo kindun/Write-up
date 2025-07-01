@@ -1,0 +1,210 @@
+\documentclass[dvipdfmx]{jsarticle}
+\setcounter{secnumdepth}{4}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{placeins}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+
+\lstset{
+	language=C,
+	basicstyle=\ttfamily\footnotesize,
+	%keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	%stringstyle=\color{red},
+	numbers=left,
+	breaklines=true,
+	frame=single
+}
+
+\title{picoCTF2025-Writeup}
+\author{kindun}
+\date{\today}
+
+\begin{document}
+\maketitle 
+
+\section{初めに}
+本記事の内容は筆者の理解に基づいており,誤りが含まれる可能性があります.
+
+\section{Cookie Monster Secret Recipe[Web Exploitation]}
+\subsection{問題分}
+Cookie Monster has hidden his top-secret cookie recipe somewhere on his website. As an aspiring cookie detective, your mission is to uncover this delectable secret. Can you outsmart Cookie Monster and find the hidden recipe? You can access the Cookie Monster \href{http://verbal-sleep.picoctf.net:56571/}{here} and good luck
+
+\subsection{解法}
+\subsubsection{cookieに着目}
+\begin{enumerate}
+	\item \textbf{ctrl+shift+iで開発者ツール(呼び名色々)を開く}
+	\item \textbf{上タブのStorageをクリック}
+	\item \textbf{左タブのCokkiesをクリック$ \xrightarrow{} $すぐ下のURLをクリック}\\
+	右側になにか出ていたら次の節に移動
+	\item \textbf{開発者ツールは閉じずに適当にUsernameとPasswordを入力しLoginする}
+\end{enumerate}
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=15cm,height=45mm]{../Image/cookie.png}
+\caption{cookie}
+\end{center}
+\end{figure}
+
+\subsubsection{URLをデコードby CyberChef}
+\begin{enumerate}
+	\item \textbf{文字列を確認}\\
+	Nameがsecret＿recipeとあることからflagだと分かる.\\
+	問題文的にもcookieになにかあることが推測できる.\\
+	しかし,このままではいけなさそう.picoCTF{}の形式ではない
+	\item \textbf{デコード}\\
+	文字列の中に％があるのでURLでエンコードされている可能性がある.\\
+	とりあえずCyberChefのMagicを使ってみる.\\
+	だめだったので次にURL Decodeを使ってみる.\\
+	デコードができた.やはりURLでエンコードされていた.\\
+\end{enumerate}
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=15cm,height=7cm]{../Image/cyberchef_URL.png}
+\caption{URL\_decode}
+\end{center}
+\end{figure}
+
+
+\subsubsection{base64をデコードby CyberChef}
+\begin{enumerate}
+	\item \textbf{とりあえず,CyberchefのMagicを使う.}\\
+	base64でエンコードされていたことが分かる.\\
+	デコードされた結果が出ていて,それがflagだと分かる.
+\end{enumerate}
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=10cm,height=5cm]{../Image/cyberchef_base64.png}
+\caption{base64\_decode}
+\end{center}
+\end{figure}
+\FloatBarrier
+
+\section{PIE TIME[Binary Exploitation]}
+\subsection{問題文}
+Can you try to get the flag? Beware we have PIE!
+Additional details will be available after launching your challenge instance.
+\subsection{解法}
+\subsubsection{問題の全体図を捉える}
+\begin{enumerate}
+	\item \textbf{Launch Instanceをクリックし,nc コマンドで実行}
+	\begin{verbatim}
+	$nc rescued-float.picoctf.net 〇〇 
+	Address of main: 0x55f9a559433d
+	Enter the address to jump to, ex => 0x12345: 
+	\end{verbatim}
+	mainのアドレスが書いてあり,入力するとアドレスがジャンプするらしい
+	\item \textbf{とりあえず,プログラムをダウンロードし,見てみる(一応binaryファイルも)}
+	中身はこんな感じ
+	\lstinputlisting{../vuln.c}
+	見てみると.win関数を実行できればflag.txtが見れることが分かる.
+	\item \textbf{44,47,48行のプログラムに注目}
+	\begin{lstlisting}[language=C]
+	void (*foo)(void) = (void (*)())val;
+	\end{lstlisting}
+	void型\texttt{foo}という関数ポインタに入力値\texttt{val}を代入している.
+	\begin{lstlisting}[language=C]
+	foo();
+	\end{lstlisting}
+	よって,入力したアドレスの関数が実行されるプログラムであるとわかった.
+	\item main関数とwin関数のアドレスを知りたい
+	ダウンロードしたELFファイル(vuln)にいろいろ書いてあるのでコマンドを使って見てみる.
+	\begin{verbatim}
+	$ vuln | grep -w -e "win" -w -e "main"
+	000000000000133d T main
+	00000000000012a7 T win
+	\end{verbatim}
+	\texttt{-w}は完全一致か,\texttt{-e}は複数検索のときに使う.
+	\item \texttt{I want to jump}\\	
+	main関数のアドレスが毎回変わってしまうがmain関数とwin関数のアドレスの差は変化していないので(何回もnc接続したらわかる),アドレス差さえわかればwin関数のアドレスがわかるということだ.
+	\item \texttt{差を求める} \\
+	さまざまなツールがあるが,とりあえず,10進数に直して計算すると差が150(10),0x96(16)だと分かった.
+	\item \texttt{入力}\\
+	nc接続をしてmainのアドレスが表示されるので,そこから-0x96(16)のアドレスを求め,入力するとflagが出てくる
+\end{enumerate}
+
+\section{hashcrack[Cryptography]}
+\subsection{問題文}
+A company stored a secret message on a server which got breached due to the admin using weakly hashed passwords. Can you gain access to the secret stored within the server? Access the server using nc verbal-sleep.picoctf.net 57356
+
+\subsection{解法}
+\begin{enumerate}
+	\item \texttt{hashをとりあえず検索}
+	\begin{verbatim}
+	$ nc verbal-sleep.picoctf.net 57356
+	Welcome!! Looking For the Secret?
+
+	We have identified a hash: 482c811da5d5b4bc6d497ffa98491e38
+	Enter the password for identified hash: 
+	\end{verbatim}
+	hashをとりあえず検索してみると
+	\begin{figure}[h]
+	\begin{center}
+	\includegraphics[width=10cm,height=40mm]{../Image/hash_serch.png}
+	\caption{hash\_serch}
+	\end{center}
+	\end{figure}
+	\FloatBarrier
+	このようにMD5と書かれており,ついでにdecodeもできそうなのでやって,それを入力するとクリア
+	\item \texttt{次も同じように}
+	\item \texttt{SHA256}\\
+	検索しても出ない人が多いかもしれません.
+	しかし,\texttt{SHA256デコード}と調べると変換ツールが出ると思うので,そちらで行いましょう
+
+\end{enumerate}
+
+\section{ph4nt0m 1ntrud3r[Forensics]}
+\subsection{問題文}
+A digital ghost has breached my defenses, and my sensitive data has been stolen!  Your mission is to uncover how this phantom intruder infiltrated my system and retrieve the hidden flag. To solve this challenge, you'll need to analyze the provided PCAP file and track down the attack method. The attacker has cleverly concealed his moves in well timely manner. Dive into the network traffic, apply the right filters and show off your forensic prowess and unmask the digital intruder! Find the PCAP file here Network Traffic PCAP file and try to get the flag. 
+
+\subsection{解法}
+\begin{enumerate}
+	\item \texttt{tsharkを使ってみる.(wiresharkのコマンドライン版)}\\
+	とりあえず,ファイルの中身を見てみる.
+	\lstinputlisting[language=bash,frame=none,numbers=none]{../tshark1.txt}
+	\item \texttt{時間に注目}\\
+	問題文より,時間が重要そうなのでframe.time,そしてLen=でpayloadになにかあることが分かるので,それも表示してみる.\\
+	ついでに,時間についてsortを行う.\\
+	tcp.segment\_data はtcp.payloadと一緒
+	\lstinputlisting[language=bash,frame=none,numbers=none]{../sorted.txt}
+	\item payloadを16進数にする.\\
+	まず,planテキストに戻してから,16進数に直す.
+	\$6は6列目という意味
+	\lstinputlisting[language=bash,frame=none,numbers=none]{../base64.txt}
+	\item base64じゃねえか\\
+	でてきた文字列がbase64っぽいので,デコードする.
+	\begin{verbatim}
+	tshark -r ../myNetworkTraffic.pcap -T fields -e frame.time -e tcp.segment_data 
+| sort -k4 | awk '{printf($6)}' | xxd -p -r | base64 -d
+	�Ѓ]B?Z��picoCTF{1t_w4snt_th4t_34sy_tbh
+_4r_2e1ff063}�i�	
+	\end{verbatim}
+	無事にflagが出ました！！！！！！！
+	\item 補足\\
+	\begin{tcolorbox}[width=10cm,colframe=gray!80!white, colback=gray!5!white, coltitle=black]
+	\begin{tabular}{|c|c|c|}
+		\hline
+		\textbf{cmd} & \textbf{オプション} & \textbf{説明}\\
+		\hline
+		tshark & -r & ファイルの読み込み\\
+		〃 & -T & formatの指定\\
+		〃 & -e & fieldの選択\\
+		sort & -kN & N列目を基準にsort(標準は昇順)\\
+		xxd & -p & plainテキストに変換\\
+		〃 & -r & 16進数に変換（戻す）\\
+		base64 & -d & decode\\
+		\hline
+	\end{tabular}
+	\end{tcolorbox}
+	
+\end{enumerate}
+\section{おわりに}
+ご覧いただきありがとうございました.
+
+\end{document}
