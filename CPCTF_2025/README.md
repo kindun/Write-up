@@ -1,11 +1,10 @@
-
-
 # CPCTF 2025 writeup
 
 ## Name Omikuji(web)
 
 render_template_stringがありました。SSTIです。
-```python=
+
+```python
  fortune = get_fortune(name)
 
     result = f"""
@@ -36,7 +35,7 @@ CPCTF{sst1_is_d3ngerou2}
 
 
 ## String Calculator(web)
-```javascript=
+```javascript
 const getFlag = () => process.env.FLAG ?? "";
 
 ...省略...
@@ -58,7 +57,7 @@ CPCTF{JavaScr!pt_!s_4n_4wes0me_1anguage}
 ## XFD(shell)
 A~XFDを出力してSHA-256する。
 
-```shell=
+```shell
 echo {A..Z} {A..Z}{A..Z} {A..W}{A..Z}{A..Z} X{A..E}{A..Z} XF{A..D} | tr ' ' '\n' | shasum -a 256
 ```
 `tr ' ' '\n'` は` `を`\n`に置き換える
